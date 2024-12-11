@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import axios from 'axios';
 import got from 'got';
+import * as NodeCache from 'node-cache';
 
 @Injectable()
 export class VisaCheckerService {
@@ -10,10 +11,12 @@ export class VisaCheckerService {
     'https://appointment.as-visa.com/Macaristan/TarihGetir';
   private readonly chatId: string;
   private readonly botToken: string;
+  private readonly cache: NodeCache;
 
   constructor(private readonly configService: ConfigService) {
     this.chatId = this.configService.get<string>('CHAT_ID');
     this.botToken = this.configService.get<string>('TELEGRAM_BOT_TOKEN');
+    this.cache = new NodeCache({ stdTTL: 60 * 60 * 24 });
   }
 
   // POST isteğini atan fonksiyon
@@ -30,9 +33,16 @@ export class VisaCheckerService {
 
       const result = await response.data;
       if (result && result.length) {
-        await this.sendTelegramNotification(
-          `Yeni bir randevu mevcut! Tarihler: ${result.join('; ')}`,
-        );
+        for (const singleDate of result) {
+          const cacheKey = `date_${singleDate}`;
+          const cacheData = this.cache.get(cacheKey);
+          if (!cacheData) {
+            await this.sendTelegramNotification(
+              `Yeni bir randevu mevcut! Tarihler: ${singleDate}`,
+            );
+            this.cache.set(cacheKey, singleDate);
+          }
+        }
       }
     } catch (error) {
       await this.sendTelegramNotification(`Hata: ${error.message}`);
