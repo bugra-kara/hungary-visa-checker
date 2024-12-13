@@ -6,8 +6,10 @@ import { VisaCheckerService } from './visa-checker.service';
 export class AppService {
   constructor(private readonly visaCheckerService: VisaCheckerService) {}
 
-  @Cron('*/15 * * * * *') // Her 15 saniyede bir çalışır
+  // Schedules a task to run every 15 seconds
+  @Cron('*/15 * * * * *')
   handleCron() {
+    // Calls the checkVisaDate method of the VisaCheckerService
     this.visaCheckerService.checkVisaDate();
   }
 }
