@@ -14,6 +14,7 @@ export class VisaCheckerService {
   // Variables to store Telegram chat ID and bot token
   private readonly chatId: string;
   private readonly botToken: string;
+  private isActive: boolean;
 
   // In-memory cache with a default TTL (time-to-live) of 24 hours
   private readonly cache: NodeCache;
@@ -41,6 +42,11 @@ export class VisaCheckerService {
 
       const dates = await response.data;
 
+      if (!this.isActive) {
+        this.isActive = true;
+        await this.sendTelegramNotification('Visa checker bot is running!');
+      }
+
       // Checking if there are available dates
       if (dates.length) {
         for (const date of dates) {
@@ -57,6 +63,7 @@ export class VisaCheckerService {
         }
       }
     } catch (error) {
+      this.sendTelegramNotification(error.toString());
       this.logger.error('Error: ', error.toString());
     }
   }
