@@ -1,75 +1,207 @@
-# VisaCheckerService
+# Hungary Visa Appointment Checker & Auto-Booker
 
-`VisaCheckerService` is a NestJS service that monitors visa appointment dates from a specified API and sends notifications through Telegram whenever new dates are available. It utilizes caching to avoid duplicate notifications for the same date.
+Automatically checks for available Hungary visa appointment dates and books appointments when the target date becomes available.
 
 ## Features
 
-- Fetches visa appointment dates from an external API.
-- Sends Telegram notifications when new dates are available.
-- Caches dates to prevent redundant notifications.
-- Uses environment variables for configuration.
+- 🔄 **Automated Checking**: Checks for available visa dates every 15 seconds
+- 🎯 **Target Date Booking**: Automatically attempts to book when target date (16/02/2026 10:45) is found
+- 🤖 **Captcha Solving**: Automatically solves Turnstile and ReCaptcha V3 using Anti-Captcha
+- 📦 **Token Queue System**: Maintains a pool of 5 pre-solved captcha tokens for instant booking
+- 🚀 **Parallel Token Generation**: Creates 5 tokens simultaneously on startup for quick readiness
+- 📱 **Telegram Notifications**: Sends notifications for new dates and booking results
+- 💾 **Smart Caching**: Prevents duplicate notifications for the same date
 
-## Requirements
+## Prerequisites
 
-- Node.js (>= 16.x)
-- NestJS Framework
-- Environment variables:
-  - `CHAT_ID`: Your Telegram chat ID.
-  - `TELEGRAM_BOT_TOKEN`: Your Telegram bot token.
+- Node.js (v16 or higher)
+- npm or yarn
+- Anti-Captcha API key ([Get one here](https://anti-captcha.com))
+- Telegram Bot Token and Chat ID ([Setup guide](https://core.telegram.org/bots))
 
 ## Installation
 
 1. Clone the repository:
-
 ```bash
-git clone https://github.com/your-repository/visa-checker-service.git
-cd visa-checker-service
+cd /Users/bugra/Desktop/visa-checker
 ```
 
 2. Install dependencies:
-
 ```bash
 npm install
 ```
 
 3. Configure environment variables:
-   Create a .env file in the root of the project and add the following:
-
 ```bash
+cp .env.example .env
+```
+
+4. Edit `.env` file with your information:
+```env
+# Telegram Configuration
 CHAT_ID=your_telegram_chat_id
 TELEGRAM_BOT_TOKEN=your_telegram_bot_token
+
+# Anti-Captcha Configuration
+ANTI_CAPTCHA_API_KEY=your_anticaptcha_api_key
+
+# User Information
+TC_KIMLIK_NO=12345678901
+PASSPORT_NUMBER=U12345678
+NAME=YOUR_NAME
+SURNAME=YOUR_SURNAME
+PHONE=905001234567
+EMAIL=your.email@example.com
+BIRTH_YEAR=1990
+
+# Travel Information
+TRAVEL_DATE=09/03/2026
+TRAVEL_SUBJECT=Turist
 ```
 
 ## Usage
 
-1. Start the NestJS application:
-
+### Development Mode
 ```bash
-npm run start
+npm run start:dev
 ```
 
-2. The service will periodically check for new visa appointment dates and send Telegram notifications if new dates are found.
+### Production Mode
+```bash
+npm run build
+npm run start:prod
+```
 
 ## How It Works
 
-1. Fetching Visa Dates:
-   The service sends a POST request to the API endpoint https://appointment.as-visa.com/Macaristan/TarihGetir with the required payload to fetch available visa dates.
-2. Caching:
-   Dates are cached using node-cache with a TTL of 24 hours to avoid duplicate notifications for the same date.
-3. Notification via Telegram:
-   When new dates are detected, a message is sent to a specified Telegram chat using the Telegram Bot API.
+### 1. Token Generation
+- On startup, creates 5 Turnstile and 5 ReCaptcha tokens **in parallel**
+- Maintains a continuous background process to keep token pool at 5
+- When a token is used, immediately starts generating a new one
 
-## Dependencies
+### 2. Date Checking
+- Checks for available dates every 15 seconds
+- Sends Telegram notification when new dates are found
+- Caches notified dates to prevent duplicates (24-hour TTL)
 
-- **[NestJS](https://nestjs.com/)**: A progressive Node.js framework.
-- **[Axios](https://axios-http.com/)**: For HTTP requests.
-- **[Node-Cache](https://www.npmjs.com/package/node-cache)**: For in-memory caching.
-- **[dotenv](https://www.npmjs.com/package/dotenv)**: For managing environment variables.
+### 3. Auto-Booking
+- When target date `16/02/2026` at `10:45` is detected:
+  1. Sends Telegram notification about finding the target date
+  2. Waits for first token pair if not ready yet
+  3. Attempts to book the appointment with retry logic (up to 10 attempts)
+  4. Uses fresh token pair for each retry attempt
+  5. Sends success/failure notification via Telegram
 
-## Example Output
-
-When a new visa date is detected, a Telegram notification is sent with a message similar to:
-
-```bash
-The new application date has arrived! Date: 2025-01-15
+### 4. Token Queue System
 ```
+┌─────────────────────────┐
+│   Token Producers       │
+│  (Background Workers)   │
+└───────────┬─────────────┘
+            │
+            ├──> Turnstile Queue [Token1, Token2, Token3, Token4, Token5]
+            │
+            └──> ReCaptcha Queue [Token1, Token2, Token3, Token4, Token5]
+                        │
+                        ▼
+                  ┌──────────────┐
+                  │  Booking Bot │
+                  └──────────────┘
+```
+
+## Configuration
+
+### Target Date & Time
+Edit `visa-checker.service.ts`:
+```typescript
+private readonly targetDate = '16/02/2026';  // DD/MM/YYYY
+private readonly targetTime = '10:45';       // HH:MM
+```
+
+### Check Interval
+Edit `app.service.ts`:
+```typescript
+@Cron('*/15 * * * * *')  // Every 15 seconds
+```
+
+### Token Queue Size
+Edit `appointment.service.ts`:
+```typescript
+tokenQueueSize: 5,  // Number of tokens to keep in queue
+```
+
+## Monitoring
+
+### Logs
+The application provides detailed logging:
+- `[Turnstile Producer]` - Turnstile token generation
+- `[ReCaptcha Producer]` - ReCaptcha token generation
+- `[Init]` - Initial parallel token generation
+- `[AppointmentService]` - Booking attempts
+- `[VisaCheckerService]` - Date checking
+
+### Telegram Notifications
+You'll receive notifications for:
+- ✅ Bot startup confirmation
+- 📅 New available dates
+- 🎯 Target date found
+- ✅ Successful booking
+- ❌ Booking failures
+
+## Troubleshooting
+
+### "ERROR_NO_SLOT_AVAILABLE"
+- Your Anti-Captcha account has no available workers
+- Wait a few seconds or increase your maximum bid in Anti-Captcha settings
+
+### "reCAPTCHA güvenlik doğrulaması başarısız"
+- Token was rejected by the server
+- System will automatically retry with a fresh token
+
+### "Seçilen tarih için bireysel kontenjan dolmuştur"
+- The time slot is fully booked
+- System will continue trying with new tokens
+
+### No Telegram notifications
+- Check `CHAT_ID` and `TELEGRAM_BOT_TOKEN` in `.env`
+- Ensure chat ID has the minus sign: `-1234567890`
+
+## API Costs
+
+**Anti-Captcha Pricing:**
+- Turnstile: ~$2.00 per 1000 solves
+- ReCaptcha V3: ~$1.50 per 1000 solves
+
+**Estimated cost per booking attempt:**
+- With retry logic (avg 3 attempts): ~$0.021
+
+## Development
+
+### Project Structure
+```
+src/
+├── app.module.ts              # Main module
+├── app.service.ts             # Cron scheduler
+├── visa-checker.service.ts    # Date checking & booking coordinator
+├── appointment.service.ts     # Token management & booking logic
+└── main.ts                    # Application entry point
+```
+
+### Adding New Features
+1. Create new service in `src/`
+2. Add to `app.module.ts` providers
+3. Inject into `visa-checker.service.ts` if needed
+
+## License
+
+UNLICENSED - Private use only
+
+## Support
+
+For issues or questions, check:
+- [Anti-Captcha Documentation](https://anti-captcha.com/apidoc)
+- [NestJS Documentation](https://docs.nestjs.com)
+
+## Disclaimer
+
+This tool is for educational purposes. Ensure compliance with the visa appointment website's terms of service.
