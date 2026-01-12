@@ -82,7 +82,7 @@ export class VisaCheckerService {
         },
       });
 
-      const dates = ['16/02/2026'];
+      const dates = await response.data
 
       if (!this.isActive) {
         this.isActive = true;
